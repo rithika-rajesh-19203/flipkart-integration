@@ -35,9 +35,9 @@ export function Connecting({ onDone }: { onDone: () => void }) {
     <Surface tone="canvas" pad={0} radius="none" className="flex min-h-dvh items-center justify-center">
       <Stack gap={8} align="center">
         <Inline gap={6} align="center">
-          <BrandTile name="Zoho Inventory" src="/brand/zoho-inventory.svg" size="lg" />
+          <BrandTile name="Zoho Inventory" src={`${import.meta.env.BASE_URL}brand/zoho-inventory.svg`} size="lg" />
           <Icon name="arrow-right" size="lg" tone="muted" />
-          <BrandTile name="Flipkart" src="/brand/flipkart.svg" size="lg" />
+          <BrandTile name="Flipkart" src={`${import.meta.env.BASE_URL}brand/flipkart.svg`} size="lg" />
         </Inline>
         <Text size="body" tone="secondary" role="status">{STEPS[Math.min(step, STEPS.length - 1)]}</Text>
       </Stack>

@@ -21,8 +21,8 @@ import type { FlowKind, SyncType } from '../data/flipkart';
  */
 const FREQ_LABEL: Record<string, string> = { '15m': '15 minutes', '1h': '1 hour', '4h': '4 hours', '12h': '12 hours' };
 
-const FK = { src: '/brand/flipkart.svg', name: 'Flipkart', where: 'Flipkart' };
-const ZI = { src: '/brand/zoho-inventory.svg', name: 'Zoho Inventory', where: 'Zoho Inventory' };
+const FK = { src: `${import.meta.env.BASE_URL}brand/flipkart.svg`, name: 'Flipkart', where: 'Flipkart' };
+const ZI = { src: `${import.meta.env.BASE_URL}brand/zoho-inventory.svg`, name: 'Zoho Inventory', where: 'Zoho Inventory' };
 
 function End({ src, name, title, where }: { src: string; name: string; title: string; where: string }) {
   return (
@@ -144,9 +144,9 @@ export function FlipkartOverview({
               <Inline gap={10} align="center" justify="between">
                 <Inline gap={10} align="center">
                   <Inline gap={4} align="center">
-                    <BrandTile name="Zoho Inventory" src="/brand/zoho-inventory.svg" size="md" />
+                    <BrandTile name="Zoho Inventory" src={`${import.meta.env.BASE_URL}brand/zoho-inventory.svg`} size="md" />
                     <Icon name="settings" size="sm" tone="primary" />
-                    <BrandTile name="Flipkart" src="/brand/flipkart.svg" size="md" />
+                    <BrandTile name="Flipkart" src={`${import.meta.env.BASE_URL}brand/flipkart.svg`} size="md" />
                   </Inline>
                   <Stack gap={2}>
                     <Text size="subheading">Flipkart Seller Integration</Text>

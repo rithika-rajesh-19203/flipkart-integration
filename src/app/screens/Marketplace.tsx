@@ -37,7 +37,7 @@ const blurb = (store: string) => `Integrate your ${store} store with Zoho Invent
 
 const CHANNELS: Channel[] = [
   {
-    id: 'flipkart', name: 'Flipkart', src: '/brand/flipkart.svg', learnMore: true,
+    id: 'flipkart', name: 'Flipkart', src: `${import.meta.env.BASE_URL}brand/flipkart.svg`, learnMore: true,
     blurb: 'Connect your Flipkart Seller account to bring listings, orders, returns and settlements into Zoho Inventory, and keep stock on Flipkart in sync with what you have on hand.',
     note: 'You\'ll need a Flipkart Seller Hub account with Developer Access. The GSTIN on the seller account must be one of this organisation\'s GSTINs.',
   },
