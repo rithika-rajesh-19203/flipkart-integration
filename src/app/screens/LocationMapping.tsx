@@ -1,58 +1,97 @@
 import { useEffect, useState } from 'react';
 import {
-  Banner, Modal, Select, Stack, Surface, Table, Text,
+  Banner, Button, Icon, Inline, Modal, Select, Stack, Text,
 } from '@canon';
-import type { TableColumn } from '@canon';
 import { FLIPKART_LOCATIONS, ZOHO_LOCATIONS, useFlipkart } from '../data/flipkart';
 
 /**
- * FLIPKART LOCATION → ZOHO WAREHOUSE. One table, used in two places: the
- * Locations section of Flipkart Configuration, and the "Map warehouses to
- * Flipkart locations" dialog on the eCommerce Flipkart card (the Shopify card's
- * "Select store ▾" panel).
+ * ZOHO WAREHOUSE → FLIPKART LOCATION, as rows — the shape of Shopify
+ * Configuration's "Setup Warehouses": a mapping mode, then one row per pair
+ * (Zoho Inventory Warehouse, the direction stock flows, Flipkart Location, ✕),
+ * then Add Mapping while unmapped Flipkart locations remain.
+ *
+ * Used in two places: the Setup Warehouses section of Flipkart Configuration,
+ * and the "Map warehouses to Flipkart locations" dialog on the eCommerce card.
+ *
+ * The value stays keyed by Flipkart location (`{ [flipkartId]: zohoValue }`):
+ * each Flipkart location takes stock from exactly one warehouse, so a key per
+ * Flipkart location makes a duplicate impossible rather than validated.
  */
-type FKLocation = (typeof FLIPKART_LOCATIONS)[number];
-const DO_NOT_SYNC = { value: '', label: 'Do not sync this location' };
+const MODES = [
+  { value: 'custom', label: 'Custom Warehouse Mapping' },
+  { value: 'all', label: 'All Warehouses to one Flipkart location' },
+];
 
-export function LocationMapping({ value, onChange }: {
+export function LocationMapping({ value, onChange, disabled }: {
   value: Record<string, string>;
   onChange: (next: Record<string, string>) => void;
+  disabled?: boolean;
 }) {
-  const mapped = Object.values(value).filter(Boolean).length;
-  const columns: TableColumn<FKLocation>[] = [
-    {
-      id: 'fk', header: 'Flipkart Location',
-      cell: (l) => (
-        <Stack gap={0}>
-          <Text weight="medium">{l.name}</Text>
-          <Text size="caption" tone="secondary">{l.id} · {l.kind}</Text>
-        </Stack>
-      ),
-    },
-    {
-      id: 'zoho', header: 'Zoho Inventory Warehouse',
-      cell: (l) => (
-        <Select
-          ariaLabel={`Zoho Inventory warehouse for ${l.name}`}
-          options={[DO_NOT_SYNC, ...ZOHO_LOCATIONS]}
-          value={value[l.id] ?? ''}
-          placeholder="Do not sync this location"
-          onChange={(v) => onChange({ ...value, [l.id]: v })}
-        />
-      ),
-    },
-  ];
+  const [mode, setMode] = useState('custom');
+  //  Rows in the order the user made them; a row may be half-filled.
+  const pairs = Object.entries(value);
+  const unused = FLIPKART_LOCATIONS.filter((l) => !(l.id in value));
+  const mapped = pairs.filter(([, z]) => z).length;
+  const headTone = disabled ? 'tertiary' : 'default';
+
+  const setRow = (oldId: string, fkId: string, zoho: string) => {
+    const next: Record<string, string> = {};
+    pairs.forEach(([k, v]) => { if (k === oldId) next[fkId] = zoho; else next[k] = v; });
+    onChange(next);
+  };
+  const remove = (id: string) => onChange(Object.fromEntries(pairs.filter(([k]) => k !== id)));
+  const add = () => { if (unused[0]) onChange({ ...value, [unused[0].id]: '' }); };
+
   return (
-    <Stack gap={4}>
-      <Surface pad={0} radius="md" border="default" className="overflow-hidden">
-        <Table caption="Flipkart location mapping" columns={columns} rows={FLIPKART_LOCATIONS}
-          rowKey={(l) => l.id} placement="card" />
-      </Surface>
-      {mapped === 0 ? (
+    <Stack gap={8}>
+      <Inline gap={10} align="center">
+        <Text tone={disabled ? 'tertiary' : 'danger'} className="w-filter-field">Map Locations of Zoho Inventory*</Text>
+        <Stack gap={0} className="w-1/3">
+          <Select ariaLabel="Map Locations of Zoho Inventory" options={MODES} value={mode} onChange={setMode} disabled={disabled} />
+        </Stack>
+      </Inline>
+
+      <Stack gap={6} className="max-w-3xl">
+        <Inline gap={6} className="pb-4 border-b border-border-divider">
+          <Stack gap={0} grow><Text weight="medium" tone={headTone}>Zoho Inventory Warehouse</Text></Stack>
+          {/* spacers the width of the arrow and the ✕, so the headings sit over their selects */}
+          <Stack gap={0} className="w-icon-md shrink-0" />
+          <Stack gap={0} grow><Text weight="medium" tone={headTone}>Flipkart Location</Text></Stack>
+          <Stack gap={0} className="w-button-md shrink-0" />
+        </Inline>
+
+        {pairs.map(([fkId, zoho]) => {
+          const fk = FLIPKART_LOCATIONS.find((l) => l.id === fkId);
+          const fkOptions = FLIPKART_LOCATIONS.filter((l) => l.id === fkId || !(l.id in value))
+            .map((l) => ({ value: l.id, label: l.name, description: `${l.id} · ${l.kind}` }));
+          return (
+            <Inline key={fkId} gap={6} align="center">
+              <Stack gap={0} grow>
+                <Select ariaLabel={`Zoho Inventory warehouse for ${fk?.name ?? fkId}`} options={ZOHO_LOCATIONS}
+                  value={zoho} placeholder="Select a warehouse" disabled={disabled}
+                  onChange={(v) => setRow(fkId, fkId, v)} />
+              </Stack>
+              <Icon name="arrow-right" size="md" tone="muted" />
+              <Stack gap={0} grow>
+                <Select ariaLabel="Flipkart location" options={fkOptions} value={fkId} disabled={disabled}
+                  onChange={(v) => setRow(fkId, v, zoho)} />
+              </Stack>
+              <Button emphasis="secondary" intent="danger" icon="close" label={`Remove ${fk?.name ?? 'mapping'}`}
+                disabled={disabled || pairs.length === 1} onClick={() => remove(fkId)} />
+            </Inline>
+          );
+        })}
+
+        {!disabled && unused.length > 0 ? (
+          <Inline>
+            <Button emphasis="secondary" icon="plus" onClick={add}>Add Mapping</Button>
+          </Inline>
+        ) : null}
+      </Stack>
+
+      {!disabled && mapped === 0 ? (
         <Banner tone="danger">Map at least one Flipkart location to keep stock in sync.</Banner>
-      ) : (
-        <Text size="caption" tone="secondary">{mapped} of {FLIPKART_LOCATIONS.length} locations will be synced.</Text>
-      )}
+      ) : null}
     </Stack>
   );
 }

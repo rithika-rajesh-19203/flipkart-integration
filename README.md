@@ -15,13 +15,13 @@ npm run dev      # → http://localhost:5181 — opens on eCommerce → Marketpl
 | Step | Screen | File | What to try |
 | --- | --- | --- | --- |
 | 1. Find Flipkart | eCommerce → Marketplace | `Marketplace.tsx` | Flipkart sits first (New) beside Amazon US, Unicommerce and Etsy. |
-| 2. Connect a store | Flipkart → **Set Up Now** (later **Add Store**) | `FlipkartConnectModal.tsx` | Store name, Application ID and Secret from Seller Hub, GSTIN. |
-| 3. Hand-off | Full-page wait | `Connecting.tsx` | Verifies the app and fetches pickup locations. |
-| 4. Configure | Flipkart Configuration | `FlipkartConfiguration.tsx` | Products, Orders, Returns & Payments, Setup Warehouses → **Save**. Cancel on a first setup discards the store. |
-| 5. Store page | Connect Flipkart | `FlipkartOverview.tsx` | Header clock = full Sync History; **Configure ▾** = Edit Configuration / Map Warehouses / View Sync History / Disconnect. Each card has its own clock ("Sales Order Sync History"), **Sync Manually** and *Last Sync*. |
-| 6. Sync History | Clock on the header or a card | `SyncHistory.tsx` | **View by** Status (Success / Failure / Success and Failures / All Records) and Sync Type. **Export ▾**. Click a Records Synced or Failures count. |
-| 7. Sync Details | A count in the history | `SyncDetails.tsx` | *Established* lists the records the run created (columns depend on the type); *Failed* lists each reference with its reason. |
-| 8. Several stores | Back on the Flipkart card | `Marketplace.tsx`, `LocationMapping.tsx` | **Add Store**, **Sync Manually ▾** (by flow, then by store), **View Details ▾**, the store table with **Show Details**, and **Map warehouses to Flipkart locations → Select store ▾**. |
+| 2. Set up | Flipkart → **Set Up Now** | — | Goes straight to configuration. One Flipkart store per organisation, named after it (*The Retail Store Inc*). |
+| 3. Configure | Flipkart Configuration | `FlipkartConfiguration.tsx` | Products, Orders, Returns & Payments, Setup Warehouses → **Save**. Cancel on a first setup discards the store. |
+| 4. Store page | Connect Flipkart | `FlipkartOverview.tsx` | Header clock = full Sync History; **Configure ▾** = Edit Configuration / Map Warehouses / View Sync History / Disconnect. Each card has its own clock ("Sales Order Sync History"), **Sync Manually** and *Last Sync*. |
+| 5. Sync History | Clock on the header or a card | `SyncHistory.tsx` | **View by** Status (Success / Failure / Success and Failures / All Records) and Sync Type. **Export ▾**. Click a Records Synced or Failures count. |
+| 6. Sync Details | A count in the history | `SyncDetails.tsx` | *Established* lists the records the run created (columns depend on the type); *Failed* lists each reference with its reason. |
+| 7. Back on the card | eCommerce → Flipkart | `Marketplace.tsx`, `LocationMapping.tsx` | **Sync Manually ▾** (by flow), **View Details**, and **Map warehouses to Flipkart locations → Map Warehouses**. |
+| 8. Push shipments | Close Settings → Sales → Sales Orders | `SalesOrders.tsx` | Tick orders → **⋯ → Push Shipments**. Uninvoiced orders fail (see Shipment Sync History); **Convert to Invoice**, then push again. |
 
 Anything outside the flow raises a *"Not a part of this prototype"* toast.
 

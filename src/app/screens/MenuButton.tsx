@@ -3,8 +3,8 @@ import { Button, Menu } from '@canon';
 import type { MenuEntry } from '@canon';
 
 /**
- * A button that opens a menu — "Sync Manually ▾", "View Details ▾",
- * "Select store ▾". Composed from `Button` + `Menu`, which already owns focus,
+ * A button that opens a menu — the Flipkart card's "Sync Manually ▾".
+ * Composed from `Button` + `Menu`, which already owns focus,
  * Escape and click-outside.
  */
 export function MenuButton({ label, entries, emphasis = 'secondary' }: {

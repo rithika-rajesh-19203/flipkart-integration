@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import {
-  Banner, BrandTile, Button, Icon, Inline, InputField, PageHeader, Stack, StatusBadge, Surface, Table, Text,
+  Banner, BrandTile, Button, Icon, Inline, InputField, PageHeader, Stack, StatusBadge, Surface, Text,
 } from '@canon';
-import type { MenuEntry, TableColumn } from '@canon';
+import type { MenuEntry } from '@canon';
 import { useFlipkart } from '../data/flipkart';
-import type { FlipkartStore, FlowKind } from '../data/flipkart';
+import type { FlowKind } from '../data/flipkart';
 import { MenuButton } from './MenuButton';
 
 const SYNC_ENTRIES: { kind: FlowKind; label: string }[] = [
@@ -20,9 +20,10 @@ const SYNC_ENTRIES: { kind: FlowKind; label: string }[] = [
  *
  * One card per marketplace — logo, name with "Integration Built by Zoho",
  * what it does, Set Up Now and Learn More — as in the reference. Flipkart is
- * the new one, so it sits first with a "New" badge until it is connected; once
- * it is, the card grows the multi-store controls: Add Store, Sync Manually ▾,
- * View Details ▾, the store table and the warehouse-mapping panel.
+ * the new one, so it sits first with a "New" badge until it is connected.
+ * An organisation has ONE Flipkart store, so once it is connected the card
+ * offers Sync Manually ▾, View Details and the warehouse-mapping panel — no
+ * Add Store, and no store picker anywhere.
  */
 interface Channel {
   id: string;
@@ -47,7 +48,7 @@ const CHANNELS: Channel[] = [
 ];
 
 export interface MarketplaceProps {
-  /** Set Up Now / Add Store — opens the connect dialog. */
+  /** Set Up Now — straight into the organisation's store configuration. */
   onSetUpFlipkart: () => void;
   onOpenStore: (id: string) => void;
   onMapWarehouses: (id: string) => void;
@@ -59,28 +60,11 @@ export function Marketplace({ onSetUpFlipkart, onOpenStore, onMapWarehouses, onS
   const { activeStores, syncNow } = useFlipkart();
   const [query, setQuery] = useState('');
 
-  const storeColumns: TableColumn<FlipkartStore>[] = [
-    { id: 'name', header: 'Store Name', cell: (st) => <Text weight="medium">{st.account.storeName}</Text> },
-    { id: 'status', header: 'Status', cell: () => <StatusBadge status="success">Active</StatusBadge> },
-    {
-      id: 'details', header: 'Details', align: 'end',
-      cell: (st) => <Text as="a" href="#" tone="link" onClick={() => onOpenStore(st.id)}>Show Details</Text>,
-    },
-  ];
-
-  //  "Sync Manually ▾": by flow, and each flow by store when there is more than one.
-  const syncEntries: MenuEntry[] = SYNC_ENTRIES.map(({ kind, label }) => (activeStores.length > 1 ? {
+  const store = activeStores[0];
+  const syncEntries: MenuEntry[] = store ? SYNC_ENTRIES.map(({ kind, label }) => ({
     id: kind, label,
-    children: activeStores.map((st) => ({
-      id: `${kind}-${st.id}`, label: st.account.storeName,
-      onSelect: () => { syncNow(st.id, kind); onSynced(`Sync started for ${st.account.storeName}.`); },
-    })),
-  } : {
-    id: kind, label,
-    onSelect: () => { syncNow(activeStores[0].id, kind); onSynced(`Sync started for ${activeStores[0].account.storeName}.`); },
-  }));
-  const storeEntries = (fn: (id: string) => void): MenuEntry[] =>
-    activeStores.map((st) => ({ id: st.id, label: st.account.storeName, onSelect: () => fn(st.id) }));
+    onSelect: () => { syncNow(store.id, kind); onSynced(`Sync started for ${store.account.storeName}.`); },
+  })) : [];
 
   const visible = CHANNELS.filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()));
 
@@ -106,7 +90,7 @@ export function Marketplace({ onSetUpFlipkart, onOpenStore, onMapWarehouses, onS
 
           {visible.map((c) => {
             const isFlipkart = c.id === 'flipkart';
-            const connected = isFlipkart && activeStores.length > 0;
+            const connected = isFlipkart && Boolean(store);
             return (
               <Surface key={c.id} pad={6} radius="card" border="default" className="max-w-5xl">
                 <Inline gap={10} align="stretch">
@@ -131,9 +115,8 @@ export function Marketplace({ onSetUpFlipkart, onOpenStore, onMapWarehouses, onS
                     <Inline justify="between" align="center">
                       {connected ? (
                         <Inline gap={4}>
-                          <Button onClick={onSetUpFlipkart}>Add Store</Button>
                           <MenuButton label="Sync Manually" entries={syncEntries} />
-                          <MenuButton label="View Details" entries={storeEntries(onOpenStore)} />
+                          <Button emphasis="secondary" onClick={() => onOpenStore(store.id)}>View Details</Button>
                         </Inline>
                       ) : (
                         <Button onClick={isFlipkart ? onSetUpFlipkart : onOutside}>Set Up Now</Button>
@@ -150,10 +133,6 @@ export function Marketplace({ onSetUpFlipkart, onOpenStore, onMapWarehouses, onS
 
                 {connected ? (
                   <Stack gap={6} className="pt-8">
-                    <Surface pad={0} radius="md" border="default" className="overflow-hidden">
-                      <Table caption="Connected Flipkart stores" columns={storeColumns} rows={activeStores}
-                        rowKey={(st) => st.id} placement="card" />
-                    </Surface>
                     <Surface tone="sunken" pad={10} radius="md">
                       <Inline gap={10} align="center" justify="between">
                         <Stack gap={2}>
@@ -162,7 +141,7 @@ export function Marketplace({ onSetUpFlipkart, onOpenStore, onMapWarehouses, onS
                             Map a pickup location from Flipkart to a warehouse in Zoho Inventory to keep your stock in sync on both platforms.
                           </Text>
                         </Stack>
-                        <MenuButton label="Select store" emphasis="primary" entries={storeEntries(onMapWarehouses)} />
+                        <Button onClick={() => onMapWarehouses(store.id)}>Map Warehouses</Button>
                       </Inline>
                     </Surface>
                   </Stack>

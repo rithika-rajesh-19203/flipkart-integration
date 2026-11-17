@@ -54,9 +54,14 @@ export function SyncDetails({ storeId, runId, kind, onBack, onOutside }: SyncDet
     },
   ];
   const failedColumns: TableColumn<FailedRecord & { id: string }>[] = [
-    { id: 'ref', header: run.type === 'items' || run.type === 'stock' ? 'SKU' : 'Flipkart Reference#', cell: (r) => <Text weight="medium">{r.reference}</Text> },
+    { id: 'ref', header: run.type === 'items' || run.type === 'stock' ? 'SKU' : run.type === 'shipments' ? 'Sales Order#' : 'Flipkart Reference#', cell: (r) => <Text weight="medium">{r.reference}</Text> },
     { id: 'reason', header: 'Reason', cell: (r) => <Text tone="danger">{r.reason}</Text> },
-    { id: 'status', header: 'Status', cell: () => <StatusBadge status="failed">Failed</StatusBadge> },
+    {
+      id: 'status', header: 'Status',
+      cell: (r) => (r.retry === 'synced' ? <StatusBadge status="success">Pushed again</StatusBadge>
+        : r.retry === 'failed' ? <StatusBadge status="failed">Failed again</StatusBadge>
+          : <StatusBadge status="failed">Failed</StatusBadge>),
+    },
   ];
 
   const title = `Flipkart - ${kind === 'synced' ? 'Established' : 'Failed'} Sync Details`;
@@ -69,7 +74,11 @@ export function SyncDetails({ storeId, runId, kind, onBack, onOutside }: SyncDet
           parent={{ label: 'Sync History', href: '#' }} onBack={onBack} />
         {kind === 'failed' ? (
           <Surface pad={0} radius="none" className="px-10 pt-6">
-            <Banner tone="warning">Fix the reasons below in Zoho Inventory or Flipkart Seller Hub. Failed records are retried on the next sync.</Banner>
+            <Banner tone="warning">
+              {run.type === 'shipments'
+                ? 'Invoice the sales orders below, then select them in Sales → Sales Orders and use Push Shipments to sync their shipments again.'
+                : 'Fix the reasons below in Zoho Inventory or Flipkart Seller Hub. Failed records are retried on the next sync.'}
+            </Banner>
           </Surface>
         ) : null}
         {kind === 'synced' ? (

@@ -4,10 +4,9 @@ import type { ReactNode } from 'react';
 /**
  * FLIPKART INTEGRATION — the prototype's one store.
  *
- *   1. Enable Online Sales          marketplaces off → on
- *   2. Flipkart → Set Up Now        connect a seller account (Application ID + Secret)
- *      Flipkart → Add Store         …and another one; a seller can run several
- *   3. Flipkart Configuration       locations, products, orders, returns & payments
+ *   1. eCommerce → Marketplace      the channel cards
+ *   2. Flipkart → Set Up Now        the organisation's one store, named after it
+ *   3. Flipkart Configuration       products, orders, modules, warehouses
  *   4. Connect Flipkart             the store's sync cards, configure, disconnect
  *   5. Sync History                 every run, filterable by status and type
  *   6. Sync Details                 the records behind a run's synced / failed count
@@ -64,6 +63,41 @@ export const FLOW_TYPE: Record<FlowKind, SyncType> = {
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
+/** The organisation. Flipkart allows one store per organisation, named after it. */
+export const ORG_NAME = 'The Retail Store Inc';
+
+/* ── Sales orders — Sales → Sales Orders ───────────────────────────────────── */
+
+export interface SalesOrder {
+  id: string;
+  date: string;
+  /** The sales order number, as Flipkart orders arrive with it. */
+  number: string;
+  /** The Flipkart order ID. */
+  reference: string;
+  customer: string;
+  status: 'confirmed' | 'closed';
+  invoiced: boolean;
+  paid: boolean;
+}
+
+const SO_SEED: [string, string, 'confirmed' | 'closed'][] = [
+  ['21/10/2026', '1114', 'confirmed'], ['21/10/2026', '1113', 'closed'], ['21/10/2026', '1111', 'closed'],
+  ['21/10/2026', '1110', 'closed'], ['16/10/2026', '1109', 'closed'], ['14/10/2026', '1108', 'confirmed'],
+  ['14/10/2026', '1107', 'confirmed'], ['13/10/2026', '1106', 'confirmed'], ['13/10/2026', '1105', 'confirmed'],
+  ['13/10/2026', '1104', 'closed'], ['13/10/2026', '1103', 'confirmed'], ['24/09/2026', '1102', 'closed'],
+  ['07/09/2026', '1097', 'closed'],
+];
+export const INITIAL_SALES_ORDERS: SalesOrder[] = SO_SEED.map(([date, number, status], i) => ({
+  id: `so-${number}`, date, number,
+  reference: `OD${String(4293817 + i * 7919).padStart(7, '0')}${String(100000000 + i * 37).slice(1)}`,
+  customer: 'Flipkart Customer', status,
+  //  Closed orders were invoiced and paid; confirmed ones are not invoiced yet —
+  //  which is exactly what makes their shipments fail on Flipkart.
+  invoiced: status === 'closed', paid: status === 'closed',
+}));
+export const NOT_INVOICED = 'Sales order is not invoiced. Flipkart accepts a shipment only after its sales order is invoiced.';
+
 export interface FlipkartAccount {
   storeName: string;
   appId: string;
@@ -91,10 +125,26 @@ export interface FlipkartConfig {
   syncSettlements: boolean;
   depositTo: string;
   recordFees: boolean;
+  taxExemption: string;
+  syncImages: boolean;
+  syncAllLocations: boolean;
+  mapCustomersBy: string;
+  remittedTaxes: boolean;
+  syncPartialCancel: boolean;
+  syncFullCancel: boolean;
+  syncUpdatedOrders: boolean;
+  sameOrderNumber: boolean;
+  syncCreditNotes: boolean;
+  sameInvoiceNumber: boolean;
 }
 
 export interface SyncedRecord { a: string; b: string; c: string }
-export interface FailedRecord { reference: string; reason: string }
+export interface FailedRecord {
+  reference: string;
+  reason: string;
+  /** Set once a later Push Shipments retried this record: how that went. */
+  retry?: 'synced' | 'failed';
+}
 
 export interface SyncRun {
   id: string;
@@ -142,7 +192,7 @@ const FAIL_REASONS: Record<SyncType, string[]> = {
   orders: ['Tax rate on the order is not configured for Karnataka (IGST 12%).', 'Item for SKU EK-1500 is inactive in Zoho Inventory.'],
   stock: ['Flipkart rejected the update: listing is blocked for QC.'],
   invoices: ['Sales order is not yet confirmed; the invoice will be created on the next sync.'],
-  shipments: ['Tracking ID not returned by Ekart yet.'],
+  shipments: [NOT_INVOICED],
   returns: ['Original sales order was not synced, so the return cannot be matched.'],
   settlements: ['Settlement amount does not match the open invoice balance.'],
 };
@@ -165,9 +215,11 @@ function synced(type: SyncType, n: number): SyncedRecord[] {
     }
   });
 }
+const UNINVOICED = SO_SEED.filter(([, , st]) => st === 'confirmed').map(([, n]) => n);
 function failed(type: SyncType, n: number): FailedRecord[] {
   return Array.from({ length: n }, (_, i) => ({
-    reference: type === 'items' || type === 'stock' ? PRODUCTS[(i + 3) % PRODUCTS.length][1] : fkOrder(),
+    reference: type === 'items' || type === 'stock' ? PRODUCTS[(i + 3) % PRODUCTS.length][1]
+      : type === 'shipments' ? UNINVOICED[i % UNINVOICED.length] : fkOrder(),
     reason: FAIL_REASONS[type][i % FAIL_REASONS[type].length],
   }));
 }
@@ -188,7 +240,7 @@ function initialHistory(c: FlipkartConfig): SyncRun[] {
     makeRun('stock', ago(24), 3, 0),
     makeRun('orders', ago(22), 4, 1),
     ...(c.createInvoices ? [makeRun('invoices', ago(22), 2, 1)] : []),
-    makeRun('shipments', ago(20), 2, 0),
+    makeRun('shipments', ago(20), 2, 1),
     ...(c.syncReturns ? [makeRun('returns', ago(18), 1, 0)] : []),
     makeRun('stock', ago(9), 1, 0),
     makeRun('stock', ago(6), 1, 0),
@@ -200,7 +252,7 @@ function initialHistory(c: FlipkartConfig): SyncRun[] {
 /* ── The store ────────────────────────────────────────────────────────────── */
 
 export const DEFAULT_CONFIG: FlipkartConfig = {
-  locations: Object.fromEntries(FLIPKART_LOCATIONS.map((l) => [l.id, l.suggested])),
+  locations: Object.fromEntries(FLIPKART_LOCATIONS.filter((l) => l.suggested).map((l) => [l.id, l.suggested])),
   mapItemsBy: 'sku',
   valuation: 'fifo',
   syncStock: true,
@@ -218,6 +270,17 @@ export const DEFAULT_CONFIG: FlipkartConfig = {
   syncSettlements: false,
   depositTo: 'flipkart-clearing',
   recordFees: true,
+  taxExemption: '',
+  syncImages: true,
+  syncAllLocations: false,
+  mapCustomersBy: 'email-name',
+  remittedTaxes: false,
+  syncPartialCancel: true,
+  syncFullCancel: true,
+  syncUpdatedOrders: false,
+  sameOrderNumber: false,
+  syncCreditNotes: true,
+  sameInvoiceNumber: false,
 };
 
 /** What a manual sync "finds", so the history has a new row to show. */
@@ -239,6 +302,15 @@ interface Store {
   /** Drops a store that was never configured — Cancel on its first configuration. */
   discardDraft: (id: string) => void;
   syncNow: (id: string, kind: FlowKind) => void;
+  salesOrders: SalesOrder[];
+  /** Convert to Invoice — marks the orders invoiced. */
+  invoiceOrders: (ids: string[]) => void;
+  /**
+   * Push Shipments — one Shipment Status run for the chosen orders. An invoiced
+   * order's shipment syncs; an uninvoiced one fails with the reason. Earlier
+   * failures for the same orders are marked with this push's outcome.
+   */
+  pushShipments: (storeId: string, ids: string[]) => { pushed: number; failed: number };
   lastSync: (s: FlipkartStore, type: SyncType) => Date | undefined;
 }
 
@@ -247,6 +319,7 @@ const Ctx = createContext<Store | null>(null);
 export function FlipkartProvider({ children }: { children: ReactNode }) {
   const [marketplacesEnabled, setEnabled] = useState(false);
   const [stores, setStores] = useState<FlipkartStore[]>([]);
+  const [salesOrders, setSalesOrders] = useState<SalesOrder[]>(INITIAL_SALES_ORDERS);
 
   const store = useMemo<Store>(() => {
     const patch = (id: string, fn: (s: FlipkartStore) => FlipkartStore) =>
@@ -274,6 +347,28 @@ export function FlipkartProvider({ children }: { children: ReactNode }) {
       saveLocations: (id, locations) => patch(id, (s) => ({ ...s, config: { ...s.config, locations } })),
       disconnect: (id) => setStores((all) => all.filter((s) => s.id !== id)),
       discardDraft: (id) => setStores((all) => all.filter((s) => s.id !== id || s.active)),
+      salesOrders,
+      invoiceOrders: (ids) => setSalesOrders((all) => all.map((o) => (ids.includes(o.id) ? { ...o, invoiced: true } : o))),
+      pushShipments: (storeId, ids) => {
+        const orders = salesOrders.filter((o) => ids.includes(o.id));
+        const ok = orders.filter((o) => o.invoiced);
+        const bad = orders.filter((o) => !o.invoiced);
+        const outcome = new Map(orders.map((o) => [o.number, o.invoiced ? 'synced' as const : 'failed' as const]));
+        patch(storeId, (s) => {
+          const history = s.history.map((r) => (r.type !== 'shipments' ? r : {
+            ...r,
+            failed: r.failed.map((f) => (!f.retry && outcome.has(f.reference) ? { ...f, retry: outcome.get(f.reference) } : f)),
+          }));
+          const at = new Date();
+          const run: SyncRun = {
+            id: `run-${runSeq++}`, at, type: 'shipments', interval: `Pushed from Sales Orders · ${orders.length} selected`,
+            synced: ok.map(() => ({ a: nextNo('SH', 10), b: `FMPP${Math.floor(1e9 + Math.random() * 9e9)}`, c: 'Shipped' })),
+            failed: bad.map((o) => ({ reference: o.number, reason: NOT_INVOICED })),
+          };
+          return { ...s, history: [run, ...history] };
+        });
+        return { pushed: ok.length, failed: bad.length };
+      },
       syncNow: (id, kind) => {
         patch(id, (s) => ({ ...s, running: { ...s.running, [kind]: true } }));
         window.setTimeout(() => {
@@ -291,7 +386,7 @@ export function FlipkartProvider({ children }: { children: ReactNode }) {
       },
       lastSync: (s, type) => s.history.find((r) => r.type === type)?.at,
     };
-  }, [marketplacesEnabled, stores]);
+  }, [marketplacesEnabled, stores, salesOrders]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

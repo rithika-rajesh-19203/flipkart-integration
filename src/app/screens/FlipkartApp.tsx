@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AppShell, Banner, Icon, Nav, TopBar,
 } from '@canon';
 import type { NavNode } from '@canon';
-import { useFlipkart } from '../data/flipkart';
-import { Connecting } from './Connecting';
+import { GSTINS, ORG_NAME, useFlipkart } from '../data/flipkart';
 import { FlipkartConfiguration } from './FlipkartConfiguration';
-import { FlipkartConnectModal } from './FlipkartConnectModal';
 import { FlipkartOverview } from './FlipkartOverview';
 import { MapWarehousesModal } from './LocationMapping';
 import { Marketplace } from './Marketplace';
+import { SalesOrders } from './SalesOrders';
 import { SyncDetails } from './SyncDetails';
 import { SyncHistory } from './SyncHistory';
 import type { HistoryFilter } from './SyncHistory';
@@ -18,28 +17,56 @@ import type { HistoryFilter } from './SyncHistory';
  * FLIPKART INTEGRATION — the prototype's router.
  *
  *   marketplace     Settings → Integrations & Marketplace → eCommerce ("Marketplace")
- *     (modal)       Flipkart → Set Up Now → Connect your Flipkart Seller Account
- *   connecting      the full-page hand-off while the account is linked
- *   configure       Flipkart Configuration → Save
+ *   configure       Set Up Now → Flipkart Configuration → Save. One store per
+ *                   organisation, named after it — so there is nothing to ask first.
  *   overview        Connect Flipkart — one store's sync cards, Configure, Disconnect
  *   history         Sync History — every run, by status and type (or one card's type)
  *   details         Established / Failed Sync Details — the records behind a count
+ *   sales-orders    Sales → Sales Orders, in the Inventory shell. Tick orders,
+ *                   ⋯ → Push Shipments to sync their shipments to Flipkart by hand.
  *
- * All of it lives in the light settings shell, as in the reference recording.
+ * Settings lives in the light settings shell, as in the reference recording;
+ * "Back to Inventory" and Close Settings lead to Sales Orders, and the bar's
+ * settings gear leads back.
  * Anything outside the flow raises a "Not a part of this prototype" toast and
  * leaves the page where it was.
  */
 type Route =
   | { page: 'marketplace' }
-  | { page: 'connecting'; storeId: string }
   | { page: 'configure'; storeId: string }
   | { page: 'overview'; storeId: string }
   | { page: 'history'; storeId: string }
-  | { page: 'details'; storeId: string; runId: string; kind: 'synced' | 'failed' };
+  | { page: 'details'; storeId: string; runId: string; kind: 'synced' | 'failed' }
+  | { page: 'sales-orders' };
 
 const OUTSIDE = 'Not a part of this prototype';
 const TOAST_MS = 2600;
 const INVENTORY_MARK = <Icon name="inventory" size="xl" tone="inherit" />;
+
+/** The Inventory app's rail — the rows the reference shows. */
+const INVENTORY_NAV: NavNode[] = [
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'items', label: 'Items', icon: 'items', children: [{ id: 'all-items', label: 'Items' }] },
+  { id: 'inventory', label: 'Inventory', icon: 'inventory', children: [{ id: 'adjustments', label: 'Inventory Adjustments' }] },
+  {
+    id: 'sales', label: 'Sales', icon: 'sales',
+    children: [
+      { id: 'customers', label: 'Customers' },
+      { id: 'retainer-invoices', label: 'Retainer Invoices' },
+      { id: 'sales-orders', label: 'Sales Orders' },
+      { id: 'invoices', label: 'Invoices' },
+      { id: 'sales-receipts', label: 'Sales Receipts' },
+      { id: 'delivery-challans', label: 'Delivery Challans' },
+      { id: 'payments-received', label: 'Payments Received' },
+      { id: 'sales-returns', label: 'Sales Returns' },
+      { id: 'credit-notes', label: 'Credit Notes' },
+      { id: 'eway-bills', label: 'e-Way Bills' },
+    ],
+  },
+  { id: 'purchases', label: 'Purchases', icon: 'purchases', children: [{ id: 'purchase-orders', label: 'Purchase Orders' }] },
+  { id: 'reports', label: 'Reports', icon: 'reports' },
+  { id: 'documents', label: 'Documents', icon: 'documents' },
+];
 
 const SETTINGS_SECTIONS: { header: string; items: NavNode[] }[] = [
   {
@@ -86,11 +113,10 @@ const SETTINGS_SECTIONS: { header: string; items: NavNode[] }[] = [
 ];
 
 export function FlipkartApp() {
-  const { connect, find, discardDraft } = useFlipkart();
+  const { connect, find, discardDraft, stores } = useFlipkart();
   const [route, setRoute] = useState<Route>({ page: 'marketplace' });
   //  Lives here, not on the page: Back from a run's records lands on the same filters.
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>({ status: 'both', type: 'all' });
-  const [connectOpen, setConnectOpen] = useState(false);
   const [mapStoreId, setMapStoreId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [query, setQuery] = useState('');
@@ -111,16 +137,60 @@ export function FlipkartApp() {
 
   const go = (r: Route) => { setRoute(r); setOutsideAt(0); };
   const say = (text: string, tone: 'success' | 'info' = 'success') => setFlash({ tone, text });
-  const connectingId = route.page === 'connecting' ? route.storeId : '';
-  const toConfigure = useCallback(() => setRoute({ page: 'configure', storeId: connectingId }), [connectingId]);
-
-  //  The hand-off is a full page with no chrome, as in the reference.
-  if (route.page === 'connecting') return <Connecting onDone={toConfigure} />;
+  //  Set Up Now: the organisation's one store, straight into its configuration.
+  const setUp = () => {
+    const existing = stores[0];
+    go({ page: 'configure', storeId: existing ? existing.id : connect({ storeName: ORG_NAME, appId: '', gstin: GSTINS[0].value }) });
+  };
 
   const openHistory = (storeId: string, type: HistoryFilter['type'] = 'all') => {
     setHistoryFilter({ status: 'both', type });
     go({ page: 'history', storeId });
   };
+
+  const toast = outsideAt ? (
+    <Banner tone="info" placement="toast" onDismiss={() => setOutsideAt(0)}>{OUTSIDE}</Banner>
+  ) : flash ? (
+    <Banner tone={flash.tone} placement="toast" onDismiss={() => setFlash(null)}>{flash.text}</Banner>
+  ) : null;
+
+  if (route.page === 'sales-orders') {
+    return (
+      <AppShell
+        nav={(
+          //  Keyed: the settings rail and this one sit in the same slot, and Nav
+          //  opens the current branch only when it mounts.
+          <Nav
+            key="inventory"
+            items={INVENTORY_NAV}
+            currentId="sales-orders"
+            onNavigate={(id) => { if (id !== 'sales-orders') outside(); }}
+            collapsed={collapsed}
+            onCollapsedChange={setCollapsed}
+            product={{ name: 'Inventory', mark: INVENTORY_MARK }}
+            label="Inventory"
+          />
+        )}
+        topBar={(
+          <TopBar
+            search={{ scope: 'Sales Orders', value: query, onValueChange: setQuery, onSubmit: outside, onScopeOpen: outside }}
+            org={{ name: ORG_NAME, onOpen: outside }}
+            actions={[
+              { id: 'new', label: 'Create new', icon: 'plus', filled: true, onSelect: outside },
+              { id: 'users', label: 'Invite users', icon: 'users', onSelect: outside },
+              { id: 'bell', label: 'Notifications', icon: 'bell', onSelect: outside },
+              { id: 'settings', label: 'Settings', icon: 'settings', onSelect: () => go({ page: 'marketplace' }) },
+            ]}
+            account={{ name: ORG_NAME, initials: 'RS', onOpen: outside }}
+            apps={{ onOpen: outside }}
+          />
+        )}
+      >
+        <SalesOrders onNotify={say} onOutside={outside} />
+        {toast}
+      </AppShell>
+    );
+  }
 
   let body;
   if (route.page === 'configure') {
@@ -174,7 +244,7 @@ export function FlipkartApp() {
   } else {
     body = (
       <Marketplace
-        onSetUpFlipkart={() => setConnectOpen(true)}
+        onSetUpFlipkart={setUp}
         onOpenStore={(storeId) => go({ page: 'overview', storeId })}
         onMapWarehouses={setMapStoreId}
         onSynced={(t) => say(t, 'info')}
@@ -183,16 +253,11 @@ export function FlipkartApp() {
     );
   }
 
-  const toast = outsideAt ? (
-    <Banner tone="info" placement="toast" onDismiss={() => setOutsideAt(0)}>{OUTSIDE}</Banner>
-  ) : flash ? (
-    <Banner tone={flash.tone} placement="toast" onDismiss={() => setFlash(null)}>{flash.text}</Banner>
-  ) : null;
-
   return (
     <AppShell
       nav={(
         <Nav
+          key="settings"
           tone="surface"
           items={[]}
           sections={SETTINGS_SECTIONS}
@@ -201,8 +266,8 @@ export function FlipkartApp() {
           collapsed={collapsed}
           onCollapsedChange={setCollapsed}
           product={{
-            name: 'All Settings', subtitle: 'The Retail Store Inc', mark: INVENTORY_MARK,
-            onBack: outside, backLabel: 'Back to Inventory',
+            name: 'All Settings', subtitle: ORG_NAME, mark: INVENTORY_MARK,
+            onBack: () => go({ page: 'sales-orders' }), backLabel: 'Back to Inventory',
           }}
           label="Settings"
         />
@@ -211,17 +276,12 @@ export function FlipkartApp() {
         <TopBar
           tone="surface"
           search={{ scope: 'Settings', value: query, onValueChange: setQuery, onSubmit: outside, onScopeOpen: outside }}
-          actions={[{ id: 'close', label: 'Close Settings', icon: 'close', labelled: true, intent: 'danger', onSelect: outside }]}
+          actions={[{ id: 'close', label: 'Close Settings', icon: 'close', labelled: true, intent: 'danger', onSelect: () => go({ page: 'sales-orders' }) }]}
         />
       )}
     >
       {body}
       {toast}
-      <FlipkartConnectModal
-        open={connectOpen}
-        onClose={() => setConnectOpen(false)}
-        onConnect={(v) => { setConnectOpen(false); go({ page: 'connecting', storeId: connect(v) }); }}
-      />
       <MapWarehousesModal
         storeId={mapStoreId}
         onClose={() => setMapStoreId(null)}
